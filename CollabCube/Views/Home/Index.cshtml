@@ -1,0 +1,74 @@
+﻿@model List<CollabCube.Models.Room>
+@{
+    ViewBag.Title = "Index";
+}
+
+<div class="jumbotron">
+    <h1>CubeRoulette</h1>
+    <p class="lead">
+        This is kinda like ChatRoulette, except you're not anonymous.<br />
+        And, you know, there are virtual Rubik's cubes...
+    </p>
+
+    @if (User.Identity.IsAuthenticated)
+    {
+        <p><a href="http://asp.net" class="btn btn-primary btn-large">Find another cuber &raquo;</a></p>
+    }
+</div>
+
+<div class="row">
+    <div class="table-responsive"></div>
+    <table class="table table-bordered table-condensed">
+        <caption>Rooms available</caption>
+        <thead>
+            <tr>
+                <th>Room Name</th>
+          @*      <th>Room Members</th>*@
+                <th>Moves Made</th>
+                <th>Cubes Solved</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var room in Model)
+{
+    <tr>
+        <td><a href="~/Home/Room?name=@room.Name">@room.Name</a></td>
+        @*<td>@room.Solves.Where(s => s.IsSolved).Count()</td>*@
+        @{
+    var total = 0;
+    foreach (var solve in room.Solves)
+    {
+        if (solve.MovesMade != null)
+        {
+            total += solve.MovesMade.Count;
+        }
+    }
+        }
+
+        <td>@total</td>
+        <td>@room.Solves.Where(s => s.IsSolved).Count()</td>
+    </tr>
+}
+        </tbody>
+
+        <tfoot>
+            <tr>
+                <td colspan="2">Room name: <input type="text" id="roomName" value="" /></td>
+                <td><a id="roomMaker" href="javascript://">Create a Room</a></td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+
+@section Scripts{
+    <script>
+        $('#roomMaker').click(function(){
+
+            var roomName = $('#roomName').val();
+
+            if (roomName) { // something interesting
+                window.location = '/home/room?name=' + roomName;
+            }
+        })
+    </script>
+}

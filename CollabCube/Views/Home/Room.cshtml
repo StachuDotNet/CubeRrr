@@ -1,0 +1,406 @@
+﻿@model string
+@{
+    ViewBag.Title = "Home Page";
+}
+
+@section headers {
+    <link href="~/twisty.js/demo/style.css" rel="stylesheet" media="screen" type="text/css" />
+}
+
+<style type="text/css">
+    #chatContainer {
+        width: 80%;
+        height: 300px;
+        margin-left: 10%;
+        border: 1px solid gray;
+    }
+</style>
+
+<div class="content">
+    <div class="left center">
+        <h2><a id="optionsToggle" href="javascript://">Options</a></h2>
+
+        <div id="options" class="padded center">
+            <label class="option">
+                Allow Dragging:
+                <input type="checkbox" id="allow_dragging" checked="checked" />
+            </label>
+
+            <label class="option">
+                Sticker Border:
+                <input type="checkbox" id="sticker_border" checked="checked" />
+            </label>
+
+            <label class="option">
+                Double-Sided:
+                <input type="checkbox" id="double_sided" checked="checked" />
+            </label>
+
+            <label class="option">
+                Cubies:
+                <input type="checkbox" id="cubies" />
+            </label>
+
+            <label class="option">
+                Hint Stickers:
+                <input type="checkbox" id="hint_stickers" />
+            </label>
+
+            <label class="option">
+                Renderer:
+                <select id="renderer">
+                    <option>Canvas</option>
+                    <option>WebGL</option>
+                </select>
+            </label>
+
+            <label class="option">
+                Stage:
+                <input type="radio" name="stage" value="full" id="stage_full" checked="true"></input>
+            </label>
+
+            @*<label class="option">
+                Speed:
+                <input id="speed" type="range" min="1" max="3" step="0.1" value="2" />
+            </label>*@
+
+            @*<label class="option">
+                Update:
+                <a href="javascript://" id="update" class="btn btn-default">Update my screen.</a>
+            </label>*@
+        </div>
+
+        @*<div id="warnings">
+            <b>Hey!</b> You're most likely out of sync with other people here!<br />
+            As of yet, I don't have a way to get views up to date.<br />
+            <br />
+            To deal with this problem, in the chat tell everyone to refresh their page at the same time.
+            Only start doing stuff when everyone's confirmed their re-arrival.
+        </div>*@
+
+        <div id="chatContainer" class="padded center">
+            <input type="text" id="message" />
+            <input type="button" id="sendmessage" value="Send" />
+            <input type="hidden" id="displayname" />
+            <ul id="discussion" style="height: 260px; overflow-y: auto;"></ul>
+        </div>
+
+    </div>
+
+    <div class="right checkered" id="twistyContainer">
+    </div>
+
+</div>
+
+
+@section scripts{
+    <script type="text/javascript" src="~/twisty.js/lib/jquery-1.11.0.min.js"></script>
+
+    <script type="text/javascript" src="~/twisty.js/lib/Three.js"></script>
+    <script type="text/javascript" src="~/twisty.js/lib/SVGRenderer.js"></script>
+    <script type="text/javascript" src="~/twisty.js/lib/RequestAnimationFrame.js"></script>
+    <script type="text/javascript" src="~/twisty.js/lib/Stats.js"></script>
+
+    <script src="~/twisty.js/alg/alg_jison.js" type="text/javascript"></script>
+    <script src="~/twisty.js/alg.js" type="text/javascript"></script>
+    <script src="~/twisty.js/twisty.js" type="text/javascript"></script>
+    <script src="~/twisty.js/puzzles/cube.js" type="text/javascript"></script>
+    @*<script src="~/twisty.js/demo/demo.js" type="text/javascript"></script>*@
+
+    <script>
+        var cache = window.applicationCache;
+        function updateReadyCache() {
+            window.applicationCache.swapCache();
+            location.reload(true); // For now
+        }
+
+        var cubeKeyMapping = {
+            73: "R", 75: "R'",
+            87: "B", 79: "B'",
+            83: "D", 76: "D'",
+            68: "L", 69: "L'",
+            74: "U", 70: "U'",
+            72: "F", 71: "F'", // Heise
+            78: "F", 86: "F'", //Kirjava
+
+            67: "l", 82: "l'",
+            85: "r", 77: "r'",
+
+            84: "x", 89: "x", 66: "x'", // 84 (T) and 89 (Y) are alternatives.
+            186: "y", 59: "y", 65: "y'", // 186 is WebKit, 59 is Mozilla; see http://unixpapa.com/js/key.html
+            80: "z", 81: "z'",
+
+            190: "M'",
+        }
+
+        var CubeState = {
+            solved: 0,
+            scrambling: 1,
+            scrambled: 2,
+            solving: 3,
+        };
+        var cubeState = null;
+
+        var twistyScene;
+
+        function makeCCC(n) {
+
+            var cccMoves = [];
+
+            for (var i = 1; i <= n / 2; i++) {
+                var moreMoves = [
+                  { base: "l", endLayer: i, amount: -1 },
+                  { base: "u", endLayer: i, amount: 1 },
+                  { base: "r", endLayer: i, amount: -1 },
+                  { base: "f", endLayer: i, amount: -1 },
+                  { base: "u", endLayer: i, amount: 1 },
+                  { base: "l", endLayer: i, amount: -2 },
+                  { base: "u", endLayer: i, amount: -2 },
+                  { base: "l", endLayer: i, amount: -1 },
+                  { base: "u", endLayer: i, amount: -1 },
+                  { base: "l", endLayer: i, amount: 1 },
+                  { base: "u", endLayer: i, amount: -2 },
+                  { base: "d", endLayer: i, amount: 1 },
+                  { base: "r", endLayer: i, amount: -1 },
+                  { base: "d", endLayer: i, amount: -1 },
+                  { base: "f", endLayer: i, amount: 2 },
+                  { base: "r", endLayer: i, amount: 2 },
+                  { base: "u", endLayer: i, amount: -1 }
+                ];
+
+                cccMoves = cccMoves.concat(moreMoves);
+            }
+
+            return cccMoves;
+        }
+
+        function getParameterByName(name) {
+            name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+            var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+                results = regex.exec(location.search);
+            return results == null ? "" : decodeURIComponent(results[1].replace(/\+/g, " "));
+        }
+        var roomName = getParameterByName('name');
+
+        var latestPauseTime = new Date();
+
+        function cleanup(original) {
+            return original.replace("&#39;", "'");
+        }
+    </script>
+
+    <script src="~/Scripts/jquery.signalR-2.0.3.min.js"></script>
+    <script src="~/signalr/hubs"></script>
+
+    <script>
+    $(function () {
+
+
+
+        document.title = 0;
+        var chat = $.connection.cubeHub;
+
+        // Create a function that the hub can call back to display messages.
+        chat.client.addNewMessageToPage = function (name, message, rn) {
+            // Add the message to the page.
+            if (roomName == rn) {
+                $('#discussion').append('<li><strong>' + htmlEncode(name) + '</strong>: ' + htmlEncode(message) + '</li>');
+            }
+        };
+
+        chat.client.refreshCube = function (moves) {
+            reloadCube();
+            var movesToDo = alg.cube.stringToAlg(moves);
+            twistyScene.queueMoves(movesToDo);
+            twistyScene.play.start();
+        }
+
+        chat.client.doMoveToCube = function (move, rn) {
+            if (roomName == rn) {
+                document.title = new Number(document.title) + 1;
+
+                var moveToDo = alg.cube.stringToAlg(move);
+                twistyScene.queueMoves(moveToDo);
+                twistyScene.play.start();
+            }
+        }
+
+        chat.client.forcePause = function (rn) {
+            if (roomName == rn) {
+                latestPauseTime = new Date();
+            }
+        }
+
+        // Get the user name and store it to prepend to messages.
+        var name = "@Context.User.Identity.Name";
+
+        if (name == '') {
+            name = prompt('What is your name?');
+        }
+
+
+        $('#displayname').val(name);
+
+
+        // Set initial focus to message input box.
+        $('#message').focus();
+
+        // Start the connection.
+        $.connection.hub.start().done(function () {
+
+
+
+            $('#update').click(function () {
+                chat.server.update(roomName);
+            });
+
+            $('#sendmessage').click(function () {
+
+                // Call the Send method on the hub.
+                chat.server.send($('#displayname').val(), $('#message').val(), roomName);
+
+                // Clear text box and reset focus for next comment.
+                $('#message').val('').focus();
+            });
+
+            $('#message').keyup(function (e) {
+                if (e.which == 13) {
+                    // Call the Send method on the hub.
+                    chat.server.send($('#displayname').val(), $('#message').val(), roomName);
+
+                    // Clear text box and reset focus for next comment.
+                    $('#message').val('').focus();
+                }
+            });
+
+            $(window).keydown(function (e) {
+                // For forcePause stuff.
+                if ((new Date()) - latestPauseTime < 5000) {
+                    return;
+                }
+
+                // This is kinda weird, we want to avoid turning the cube
+                // if we're in a textarea, or input field.
+                var focusedEl = document.activeElement.nodeName.toLowerCase();
+                var isEditing = focusedEl == 'textarea' || focusedEl == 'input';
+                if (isEditing) {
+                    return;
+                }
+
+                var keyCode = e.keyCode;
+                switch (keyCode) {
+                    case 27:
+                        return;
+                        e.preventDefault();
+                        break;
+
+                    case 32:
+                        return;
+                        e.preventDefault();
+                        break;
+                }
+
+                var move = cubeKeyMapping[e.keyCode];
+
+                if (move !== undefined) {
+                    chat.server.doMove(move, roomName);
+                }
+
+                //twistyScene.keydown(e);
+            });
+        });
+        cache.addEventListener('updateready', updateReadyCache, false);
+
+        var currentCubeSize = 3;
+        reloadCube();
+        twistyScene.setSpeed(10);
+        var initialMoves = alg.cube.stringToAlg("@Html.Raw(ViewBag.InitialMoves)");
+        twistyScene.setSpeed(3);
+            twistyScene.queueMoves(initialMoves);
+            twistyScene.play.start();
+
+            $("#allow_dragging").bind("change", reloadCube);
+            $("#double_sided").bind("change", reloadCube);
+            $("#sticker_border").bind("change", reloadCube);
+            $("#cubies").bind("change", reloadCube);
+            $("#hint_stickers").bind("change", reloadCube);
+
+            $('input[name="stage"]').bind("change", reloadCube);
+
+            $("#lucasparity").bind("click", function () {
+                var lucasparity = alg.cube.stringToAlg("r U2 x r U2 r U2 r' U2 L U2 r' U2 r U2 r' U2 r'");
+                twistyScene.queueMoves(lucasparity);
+                twistyScene.play.start();
+            });
+
+            $('#renderer').change(reloadCube);
+
+            //$("#speed").bind("change", function () {
+            //    var speed = $('#speed')[0].valueAsNumber
+            //    twistyScene.setSpeed(speed);
+            //});
+
+            twistyScene.setCameraPosition(0);
+
+            function reDimensionCube() {
+                var dim = 3;
+                if (!dim) {
+                    dim = 3;
+                }
+                dim = Math.min(Math.max(dim, 1), 16);
+                if (dim != currentCubeSize) {
+                    currentCubeSize = dim;
+                    reloadCube();
+                }
+            }
+
+            // From alg.garron.us
+            function escapeAlg(algstr) { return algstr.replace(/\n/g, '%0A').replace(/-/g, '%2D').replace(/\'/g, '-').replace(/ /g, '_'); }
+
+            function reloadCube() {
+                var renderer = THREE[$('#renderer option:selected').val() + "Renderer"]; //TODO: Unsafe
+                var stage = $('input[name="stage"]:checked').val();
+                var speed = 3;//$('#speed')[0].valueAsNumber;
+
+                twistyScene = new twisty.scene({
+                    renderer: renderer,
+                    allowDragging: $("#allow_dragging").is(':checked'),
+                    "speed": speed,
+                    stats: true
+                });
+
+
+
+                $("#twistyContainer").empty();
+                $("#twistyContainer").append($(twistyScene.getDomElement()));
+
+                twistyScene.initializePuzzle({
+                    "type": "cube",
+                    "dimension": currentCubeSize,
+                    "stage": stage,
+                    "doubleSided": $("#double_sided").is(':checked'),
+                    "cubies": $("#cubies").is(':checked'),
+                    "hintStickers": $("#hint_stickers").is(':checked'),
+                    "stickerBorder": $("#sticker_border").is(':checked')
+                });
+
+                twistyScene.resize();
+                cubeState = CubeState.solved;
+            }
+
+            $(window).resize(twistyScene.resize);
+
+
+
+        });
+        // This optional function html-encodes messages for display in the page.
+        function htmlEncode(value) {
+            var encodedValue = $('<div />').text(value).html();
+            return encodedValue;
+        }
+
+        $('#optionsToggle').click(function () {
+            $('#options').slideToggle('slow');
+        });
+    </script>
+}
